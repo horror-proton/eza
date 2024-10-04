@@ -377,6 +377,35 @@ impl<'dir> File<'dir> {
                 .is_some_and(|p| all_mounts().contains_key(p))
     }
 
+    // Whether the directory represents a Btrfs subvolume
+    pub fn is_btrfs_subvolume(&self) -> bool {
+        cfg!(target_os = "linux")
+            && self.metadata.file_type().is_dir()
+            && self.metadata.ino() == 256
+            && self.is_btrfs().unwrap_or(false)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn is_btrfs(&self) -> io::Result<bool> {
+        use std::os::unix::ffi::OsStrExt;
+
+        for part in self.path.ancestors() {
+            if let Some(mount) = all_mounts().get(part) {
+                return Ok(mount.fstype == "btrfs");
+            }
+        }
+
+        // /proc/mounts not working? fallback to statfs
+        let file_path = &self.path;
+        let mut out = std::mem::MaybeUninit::<libc::statfs>::uninit();
+        let path = std::ffi::CString::new(file_path.as_os_str().as_bytes()).unwrap();
+        match unsafe { libc::statfs(path.as_ptr(), out.as_mut_ptr()) } {
+            0 => Ok(unsafe { out.assume_init() }.f_type == libc::BTRFS_SUPER_MAGIC),
+            _ => Err(io::Error::last_os_error()),
+            // eprintln!("eza: statfs {:?}: {}", self.path, os_err);
+        }
+    }
+
     /// The filesystem device and type for a mount point
     pub fn mount_point_info(&self) -> Option<&MountedFs> {
         if cfg!(any(target_os = "linux", target_os = "macos")) {
