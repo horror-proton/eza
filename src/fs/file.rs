@@ -378,11 +378,16 @@ impl<'dir> File<'dir> {
     }
 
     // Whether the directory represents a Btrfs subvolume
+    #[cfg(target_os = "linux")]
     pub fn is_btrfs_subvolume(&self) -> bool {
-        cfg!(target_os = "linux")
-            && self.metadata.file_type().is_dir()
+        self.metadata.file_type().is_dir()
             && self.metadata.ino() == 256
             && self.is_btrfs().unwrap_or(false)
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub fn is_btrfs_subvolume(&self) -> bool {
+        false
     }
 
     #[cfg(target_os = "linux")]
